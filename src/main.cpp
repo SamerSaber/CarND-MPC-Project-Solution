@@ -9,13 +9,12 @@
 #include "MPC.h"
 #include "json.hpp"
 
+using namespace Eigen;
 // for convenience
 using json = nlohmann::json;
 
-// For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
+
+const double Lf = 2.67;
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -98,36 +97,61 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
+          double steer_value = j[1]["steering_angle"];
+		  double throttle_value = j[1]["throttle"];
 
-          json msgJson;
-          // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
-          // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = throttle_value;
+		  // handle latency -> estimate values 100ms in the future
+		  const double latency_dt = 0.1;
+		  psi -= v * steer_value / Lf * latency_dt;
+		  px += v * cos(psi) * latency_dt;
+		  py += v * sin(psi) * latency_dt;
+		  v += throttle_value * latency_dt;
 
-          //Display the MPC predicted trajectory 
-          vector<double> mpc_x_vals;
-          vector<double> mpc_y_vals;
+		  const auto NUMBER_OF_WAYPOINTS = ptsx.size();
+		  VectorXd waypoints_x(NUMBER_OF_WAYPOINTS);
+		  VectorXd waypoints_y(NUMBER_OF_WAYPOINTS);
 
-          //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
-          // the points in the simulator are connected by a Green line
+		  for(int i=0; i < NUMBER_OF_WAYPOINTS; i++){
+			  // shift car reference angle to 90 degrees
+			  const double dx = ptsx[i] - px;
+			  const double dy = ptsy[i] - py;
+			  waypoints_x[i] = dx * cos(-psi) - dy * sin(-psi);
+			  waypoints_y[i] = dx * sin(-psi) + dy * cos(-psi);
+		  }
 
-          msgJson["mpc_x"] = mpc_x_vals;
-          msgJson["mpc_y"] = mpc_y_vals;
+		  auto coeffs = polyfit(waypoints_x, waypoints_y, 3);
+		  double cte = polyeval(coeffs, 0);
+		  double epsi = -atan(coeffs[1]);
 
-          //Display the waypoints/reference line
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
+		  VectorXd state(6);
+		  state << 0.0, 0.0, 0.0, v, cte, epsi;
 
-          //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
-          // the points in the simulator are connected by a Yellow line
+		  // Display the waypoints/reference line (yellow line)
+		  vector<double> next_x_vals;
+		  vector<double> next_y_vals;
+		  for (double d = 3; d < 70; d+=2.5) {
+			  next_x_vals.push_back(d);
+			  next_y_vals.push_back(polyeval(coeffs, d));
+		  }
 
-          msgJson["next_x"] = next_x_vals;
-          msgJson["next_y"] = next_y_vals;
+		  // solve mpc
+		  auto mpc_result = mpc.Solve(state, coeffs);
 
+		  // Display the MPC predicted trajectory (green line)
+		  vector<double> mpc_x_vals;
+		  vector<double> mpc_y_vals;
+		  for (int i = 2; i < mpc_result.size(); i++) {
+			  if(i%2) mpc_y_vals.push_back(mpc_result[i]);
+			  else mpc_x_vals.push_back(mpc_result[i]);
+		  }
 
+		  json msgJson;
+		  msgJson["steering_angle"] = mpc_result[0];
+		  msgJson["throttle"] = mpc_result[1];
+		  msgJson["mpc_x"] = mpc_x_vals;
+		  msgJson["mpc_y"] = mpc_y_vals;
+		  msgJson["next_x"] = next_x_vals;
+		  msgJson["next_y"] = next_y_vals;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           std::cout << msg << std::endl;
           // Latency
