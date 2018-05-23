@@ -42,15 +42,16 @@ Self-Driving Car Engineer Nanodegree Program
 
 [image1]: ./eqns.png "Model equations"
 
-##Model describtion
+
+## Model describtion
 
 ![alt text][image1]
 
-** The model described in the previous eqautions which is provided in the lectures.
+* The model described in the previous eqautions which is provided in the lectures.
 *  The model state components are position(x&y), heading angle(theta), velocity(v), cross traffic error(cte) and heading angle error(etheta)
 * The actuators are the steering angle and the acceleration.
 
 
-##N and dt reasoning
+## N and dt reasoning
 
 * I selected N to be 10 and dt to be .1 so the predection window is 1 second which I think is reasnable according to the maximum speed of the vehicle.
