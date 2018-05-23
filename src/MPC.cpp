@@ -5,35 +5,24 @@
 #include "float.h"
 using CppAD::AD;
 
-// TODO: Set the timestep length and duration
-size_t N = 10;
-double dt = 0.1;
 
-
-// This value assumes the model presented in the classroom is used.
-//
-// It was obtained by measuring the radius formed by running the vehicle in the
-// simulator around in a circle with a constant steering angle and velocity on a
-// flat terrain.
-//
-// Lf was tuned until the the radius formed by the simulating the model
-// presented in the classroom matched the previous radius.
-//
-// This is the length from front to CoG that has a similar radius.
-const double Lf = 2.67;
+size_t MPC::N;
+double MPC::dt;
+double MPC::Lf;
+double MPC::ref_v;
+bool MPC::is_initialized = false;
 
 // Both the reference cross track and orientation errors are 0.
 // The reference velocity is set to 40 mph.
-double ref_v = 110;
 
-size_t x_start = 0;
-size_t y_start = x_start + N;
-size_t psi_start = y_start + N;
-size_t v_start = psi_start + N;
-size_t cte_start = v_start + N;
-size_t epsi_start = cte_start + N;
-size_t delta_start = epsi_start + N;
-size_t a_start = delta_start + N - 1;
+size_t x_start;
+size_t y_start;
+size_t psi_start;
+size_t v_start;
+size_t cte_start;
+size_t epsi_start;
+size_t delta_start;
+size_t a_start;
 
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
@@ -58,21 +47,21 @@ class FG_eval {
 	fg[0] = 0;
 
 	// The part of the cost based on the reference state.
-	for (int t = 0; t < N; t++) {
-	  fg[0] += 4000 * CppAD::pow(vars[cte_start + t], 2);
-	  fg[0] += 4000 * CppAD::pow(vars[epsi_start + t], 2);
-	  fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
+	for (int t = 0; t < MPC::N; t++) {
+	  fg[0] += 3500 * CppAD::pow(vars[cte_start + t], 2);
+	  fg[0] += 3500 * CppAD::pow(vars[epsi_start + t], 2);
+	  fg[0] += CppAD::pow(vars[v_start + t] - MPC::ref_v, 2);
 	}
 
 	// Minimize the use of actuators.
-	for (int t = 0; t < N - 1; t++) {
+	for (int t = 0; t < MPC::N - 1; t++) {
 	  fg[0] += 5 * CppAD::pow(vars[delta_start + t], 2);
 	  fg[0] += 5 * CppAD::pow(vars[a_start + t], 2);
 	}
 
 	// Minimize the value gap between sequential actuations.
-	for (int t = 0; t < N - 2; t++) {
-	  fg[0] += 250 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+	for (int t = 0; t < MPC::N - 2; t++) {
+	  fg[0] += 150 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
 	  fg[0] += 10 * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
 	}
 
@@ -94,7 +83,7 @@ class FG_eval {
 	fg[1 + epsi_start] = vars[epsi_start];
 
 	// The rest of the constraints
-	for (int t = 1; t < N; t++) {
+	for (int t = 1; t < MPC::N; t++) {
 	  // The state at time t+1 .
 	  AD<double> x1 = vars[x_start + t];
 	  AD<double> y1 = vars[y_start + t];
@@ -129,12 +118,12 @@ class FG_eval {
 	  // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
 	  // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
 
-	  fg[1 + x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
-	  fg[1 + y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
-	  fg[1 + psi_start + t] = psi1 - (psi0 - v0 * delta0 / Lf * dt);
-	  fg[1 + v_start + t] = v1 - (v0 + a0 * dt);
-	  fg[1 + cte_start + t] = cte1 - (f0 - y0 + (v0 * CppAD::sin(epsi0) * dt));
-	  fg[1 + epsi_start + t] = epsi1 - (psi0 - psides0 - v0 * delta0 / Lf * dt);
+	  fg[1 + x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * MPC::dt);
+	  fg[1 + y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * MPC::dt);
+	  fg[1 + psi_start + t] = psi1 - (psi0 - v0 * delta0 / MPC::Lf * MPC::dt);
+	  fg[1 + v_start + t] = v1 - (v0 + a0 * MPC::dt);
+	  fg[1 + cte_start + t] = cte1 - (f0 - y0 + (v0 * CppAD::sin(epsi0) * MPC::dt));
+	  fg[1 + epsi_start + t] = epsi1 - (psi0 - psides0 - v0 * delta0 / MPC::Lf * MPC::dt);
 	}
 
   }
@@ -143,8 +132,32 @@ class FG_eval {
 //
 // MPC class definition implementation.
 //
-MPC::MPC() {}
+MPC::MPC()
+{
+	if(!is_initialized)
+	{
+		cout<<"MPC must be initialized first!!";
+		exit(-1);
+	}
+	x_start = 0;
+	y_start = x_start + MPC::N;
+	psi_start = y_start + MPC::N;
+	v_start = psi_start + MPC::N;
+	cte_start = v_start + MPC::N;
+	epsi_start = cte_start + MPC::N;
+	delta_start = epsi_start + MPC::N;
+	a_start = delta_start + MPC::N - 1;
+}
 MPC::~MPC() {}
+
+void MPC::init(size_t N, double dt, double Lf, double ref_v)
+{
+	MPC::N = N;
+	MPC::dt = dt;
+	MPC::Lf = Lf;
+	MPC::ref_v = ref_v;
+	MPC::is_initialized = true;
+}
 
 vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
 	  size_t i;

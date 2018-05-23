@@ -13,8 +13,10 @@ using namespace Eigen;
 // for convenience
 using json = nlohmann::json;
 
-
+size_t N = 10;
+double dt = 0.1;
 const double Lf = 2.67;
+double ref_v = 110;
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -68,6 +70,7 @@ int main() {
   uWS::Hub h;
 
   // MPC is initialized here!
+  MPC::init(N, dt, Lf, ref_v);
   MPC mpc;
 
   h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
