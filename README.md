@@ -50,6 +50,7 @@ Self-Driving Car Engineer Nanodegree Program
 * The model described in the previous eqautions which is provided in the lectures.
 *  The model state components are position(x&y), heading angle(theta), velocity(v), cross traffic error(cte) and heading angle error(etheta)
 * The actuators are the steering angle and the acceleration.
+* To solve the 100 ms latency problem, I used the above model equations to predict the state after 100ms before calling the MPC process function. 
 
 
 ## N and dt reasoning
